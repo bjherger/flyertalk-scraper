@@ -6,10 +6,11 @@ Code template courtesy https://github.com/bjherger/Python-starter-repo
 
 """
 import logging
-import pandas
 from urllib.parse import urljoin
 
+import pandas
 import requests
+from bs4 import BeautifulSoup
 
 from bin import lib
 
@@ -23,13 +24,21 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
 
     # Reference variables
-    scrape = True
+    scrape_forum_config = False
+    parse_forum_config = False
+    scrape_threads_config = True
     parse = True
 
     # Scrape pages from forum & archive
-    if scrape:
+    if scrape_forum_config:
         scrape_forum('united-airlines-mileageplus-681')
 
+    # Parse the forum pages
+    if parse_forum_config:
+        parse_forum()
+
+    if scrape_threads_config:
+        scrape_threads()
     # TODO Scrape posts from forum & archive
 
     # TODO Parse results & archive
@@ -60,7 +69,7 @@ def scrape_forum(forum_name):
         result_dict['page_url'] = page_url
         result_dict['index'] = index
         try:
-            r = requests.get(page_url)i
+            r = requests.get(page_url)
             result_dict['page_html'] = r.content
             result_dict['http_status'] = r.status_code
             result_dict['error'] = None
@@ -76,6 +85,47 @@ def scrape_forum(forum_name):
 
     return forum_pages
 
+def parse_forum():
+    # Reference variables
+    forum_pages = pandas.read_pickle('../data/output/forum_pages.pkl')
+    results = list()
+
+    # Step through each forum page (listing multiple threads)
+    for content in forum_pages['page_html']:
+        soup = BeautifulSoup(content)
+
+        # Step through each link on the page
+        for thread_result in soup.find_all('a'):
+            thread_id = thread_result.get('id')
+
+            # If the link describes a thread, parse that link
+            if thread_id is not None and str(thread_id).startswith('thread_title_'):
+                logging.debug('Working thread_id: {}'.format(thread_id))
+                result_dict = dict()
+                result_dict['text'] = thread_result.get_text()
+                result_dict['url'] = thread_result.attrs['href']
+                result_dict['id'] = str(thread_id)
+                result_dict['thread_id'] = str(thread_id).replace('thread_title_', '')
+
+            results.append(results)
+
+    threads = pandas.DataFrame(results)
+    threads.to_pickle('../data/output/threads.pkl')
+    return threads
+
+def scrape_threads():
+    threads = pandas.read_pickle('../data/output/threads.pkl')
+
+    for url in threads['url']:
+        logging.debug('Parsing url: {}'.format(url))
+
+        # TODO Determine number of pages, from first page
+        # TODO Create a list of pages to work through
+        # TODO Iterate through pages, and pull each one
+        pass
+
+
+    pass
 
 # Main section
 if __name__ == '__main__':
