@@ -5,13 +5,13 @@ coding=utf-8
 Code template courtesy https://github.com/bjherger/Python-starter-repo
 
 """
-import cPickle
 import logging
-import os
-
 import pandas
+from urllib.parse import urljoin
 
-import lib
+import requests
+
+from bin import lib
 
 
 def main():
@@ -22,67 +22,59 @@ def main():
     """
     logging.basicConfig(level=logging.DEBUG)
 
-    observations = extract()
-    observations = transform(observations)
-    observations, transformation_pipeline, trained_model = model(observations)
-    load(observations, transformation_pipeline, trained_model)
-    pass
-
-
-def extract():
-    logging.info('Begin extract')
-    observations = pandas.DataFrame()
-
-    lib.archive_dataset_schemas('extract', locals(), globals())
-    logging.info('End extract')
-    return observations
-
-
-def transform(observations):
-    logging.info('Begin transform')
-
-    lib.archive_dataset_schemas('transform', locals(), globals())
-    logging.info('End transform')
-    return observations
-
-
-def model(observations):
-    logging.info('Begin model')
-
-    mapper = None
-
-    transformation_pipeline = None
-
-    trained_model = None
-
-    lib.archive_dataset_schemas('model', locals(), globals())
-    logging.info('End model')
-    return observations, transformation_pipeline, trained_model
-
-
-def load(observations, transformation_pipeline, trained_model):
-    logging.info('Begin load')
-
     # Reference variables
-    lib.get_temp_dir()
+    scrape = True
+    parse = True
 
-    observations_path = os.path.join(lib.get_temp_dir(), 'observations.csv')
-    logging.info('Saving observations to path: {}'.format(observations_path))
-    observations.to_csv(observations_path, index=False)
+    # Scrape pages from forum & archive
+    if scrape:
+        scrape_forum('united-airlines-mileageplus-681')
 
-    if transformation_pipeline is not None:
-        transformation_pipeline_path = os.path.join(lib.get_temp_dir(), 'transformation_pipeline.pkl')
-        logging.info('Saving transformation_pipeline to path: {}'.format(transformation_pipeline))
-        cPickle.dump(transformation_pipeline, open(transformation_pipeline, 'w+'))
+    # TODO Scrape posts from forum & archive
 
-    if trained_model is not None:
-        trained_model_path = os.path.join(lib.get_temp_dir(), 'trained_model.pkl')
-        logging.info('Saving trained_model to path: {}'.format(transformation_pipeline))
-        cPickle.dump(trained_model, open(trained_model_path, 'w+'))
-
-    lib.archive_dataset_schemas('load', locals(), globals())
-    logging.info('End load')
+    # TODO Parse results & archive
     pass
+
+def scrape_forum(forum_name):
+    """
+    Walk a forum page by page, and pull each page, including:
+
+     - Page number
+    :return: Pandas dataframe with the above
+    """
+    # Reference variables
+    base_url = 'https://www.flyertalk.com/forum/'
+    forum_url = urljoin(base_url, forum_name)
+    logging.info('base_url: {}, forum_name: {}, forum_url: {}'.format(base_url, forum_name, forum_url))
+    results = list()
+
+    # Create list of page_urls to parse, and add in first page (which is formatted differently)
+    page_urls = list(map(lambda x: '{}-{}.html'.format(forum_url, x), range(2, 1323)))
+    page_urls = [forum_url] + page_urls
+    logging.info('Page_urls: {}'.format(page_urls[:3]))
+
+    for index, page_url in enumerate(page_urls, start=1):
+        logging.info('Attempting to parse index: {}, with page_url: {}'.format(index, page_url))
+        lib.wait()
+        result_dict = dict()
+        result_dict['page_url'] = page_url
+        result_dict['index'] = index
+        try:
+            r = requests.get(page_url)i
+            result_dict['page_html'] = r.content
+            result_dict['http_status'] = r.status_code
+            result_dict['error'] = None
+        except Exception as e:
+            logging.warning('Saw error: {}'.format(str(e)))
+            result_dict['error'] = str(e)
+
+        results.append(result_dict)
+
+    forum_pages = pandas.DataFrame(results)
+    forum_pages.to_pickle('../data/output/forum_pages.pkl')
+    print(forum_pages['page_html'])
+
+    return forum_pages
 
 
 # Main section
