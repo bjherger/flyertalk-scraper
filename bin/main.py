@@ -5,7 +5,9 @@ coding=utf-8
 Code template courtesy https://github.com/bjherger/Python-starter-repo
 
 """
+import glob
 import logging
+import sys
 from urllib.parse import urljoin
 
 import pandas
@@ -26,8 +28,8 @@ def main():
     # Reference variables
     scrape_forum_config = False
     parse_forum_config = False
-    scrape_threads_config = True
-    parse = True
+    scrape_threads_config = False
+    parse_threads_config = True
 
     # Scrape pages from forum & archive
     if scrape_forum_config:
@@ -39,10 +41,11 @@ def main():
 
     if scrape_threads_config:
         scrape_threads()
-    # TODO Scrape posts from forum & archive
 
-    # TODO Parse results & archive
+    if parse_threads_config:
+        parse_threads()
     pass
+
 
 def scrape_forum(forum_name):
     """
@@ -85,6 +88,7 @@ def scrape_forum(forum_name):
 
     return forum_pages
 
+
 def parse_forum():
     # Reference variables
     forum_pages = pandas.read_pickle('../data/output/forum_pages.pkl')
@@ -113,19 +117,114 @@ def parse_forum():
     threads.to_pickle('../data/output/threads.pkl')
     return threads
 
+
 def scrape_threads():
     threads = pandas.read_pickle('../data/output/threads.pkl')
+    s = requests.Session()
+    results = list()
 
-    for url in threads['url']:
-        logging.debug('Parsing url: {}'.format(url))
+    num_urls = len(threads['url'])
+    logging.info('num_urls: {}'.format(num_urls))
 
-        # TODO Determine number of pages, from first page
-        # TODO Create a list of pages to work through
-        # TODO Iterate through pages, and pull each one
-        pass
+    # TODO remove subsetting for first 3 pages
+    for url_index, url in enumerate(threads['url'], start=1):
+
+        try:
+            logging.info('Working url_index: {} of {} url: {}'.format(url_index, num_urls, url))
+
+            thread_base_url = str(url).replace('.html', '')
+
+            r = s.get(url)
+
+            # Determine number of pages, from first page
+            first_page_soup = BeautifulSoup(r.content)
+            mb_page_text = first_page_soup.find_all(id='mb_page')[0].get_text()
+            max_page_number = int(str(mb_page_text).replace('1 / ', ''))
+            logging.debug('Max page number: {} for thread url: {}'.format(max_page_number, url))
+            page_urls = list(map(lambda x: '{}-{}.html'.format(thread_base_url, x), range(2, max_page_number + 1)))
+            page_urls = [url] + page_urls
+
+            for index, page_url in enumerate(page_urls, start=1):
+                logging.info('Attempting to parse index: {}, with page_url: {}'.format(index, page_url))
+                lib.wait()
+
+                result_dict = dict()
+                result_dict['page_url'] = page_url
+                result_dict['thread_url'] = url
+                result_dict['thread_page_id'] = index
+                result_dict['max_thread_page_id'] = max_page_number
+
+                try:
+                    r = requests.get(page_url)
+                    result_dict['page_html'] = r.content
+                    result_dict['http_status'] = r.status_code
+                    result_dict['error'] = None
+                except Exception as e:
+                    logging.warning('Saw error: {}'.format(str(e)))
+                    result_dict['error'] = str(e)
+
+                results.append(result_dict)
+        except:
+            logging.warning('Error w/ {}, {}'.format(url_index, url))
+
+        if (url_index % 50 == 0) or (url_index == num_urls):
+            thread_pages = pandas.DataFrame(results)
+            thread_pages.to_pickle('../data/output/thread_pages_{}.pkl'.format(url_index))
+            results = list()
+
+    return None
 
 
-    pass
+def parse_threads():
+    # Reference variables
+    results = list()
+
+    # List out all serialized thread files
+    thread_scrape_chunk_paths = sorted(glob.glob('../data/output/thread_pages_*.pkl'))
+    logging.info(
+        'List of scrape chunks to parse: {}, {}'.format(len(thread_scrape_chunk_paths), thread_scrape_chunk_paths))
+
+    # Iterate through serialized thread files
+    for chunk_index, thread_scrape_chunk_path in enumerate(thread_scrape_chunk_paths):
+        logging.info('Working to parse thread_scrape_chunk_path: {}, {}'.format(chunk_index, thread_scrape_chunk_path))
+
+        chunk = pandas.read_pickle(thread_scrape_chunk_path)
+
+        # Iterate through individual thread pages
+        for thread_index, thread_page in chunk.iterrows():
+            logging.debug('Working thread_page: {} from {}, with url: {}'.
+                          format(thread_index, thread_scrape_chunk_path, thread_page['page_url']))
+
+            page_html = thread_page['page_html']
+            soup = BeautifulSoup(page_html)
+
+            # Iterate through posts on thread_page
+            for post in soup.find_all(class_='tpost'):
+                result_dict = dict()
+                result_dict.update(thread_page)
+                del result_dict['page_html']
+
+                result_dict['username'] = post.find(class_='bigusername').get_text()
+
+                result_dict['user_info'] = post.find(class_='tcell alt2').get_text()
+                result_dict['text'] = post.find(class_='tcell alt1').get_text()
+
+                # Search through all of the links for the timestamp link
+                for link in soup.find_all('a'):
+                    element_name = link.get('name')
+
+                    # If the link describes a timestamp, add that timestampe
+                    if element_name is not None and str(element_name).startswith('post'):
+                        result_dict['timestamp'] = str(link.next_sibling)
+
+                # Add thread post to results
+                results.append(result_dict)
+
+        chunk_posts = pandas.DataFrame(results)
+        chunk_posts.to_pickle('../data/output/thread_posts_{}.pkl'.format(chunk_index))
+        results = list()
+    return 
+
 
 # Main section
 if __name__ == '__main__':
