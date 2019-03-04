@@ -192,7 +192,7 @@ def parse_threads():
 
         # Iterate through individual thread pages
         for thread_index, thread_page in chunk.iterrows():
-            logging.debug('Working thread_page: {} from {}, with url: {}'.
+            logging.info('Working thread_page: {} from {}, with url: {}'.
                           format(thread_index, thread_scrape_chunk_path, thread_page['page_url']))
 
             page_html = thread_page['page_html']
@@ -203,6 +203,15 @@ def parse_threads():
                 result_dict = dict()
                 result_dict.update(thread_page)
                 del result_dict['page_html']
+
+                # Pull permalink
+                for link in soup.find_all('a'):
+                    element_name = link.get('id')
+                    if element_name is not None and str(element_name).startswith('postcount'):
+                        result_dict['permalink'] = link.attrs['href']
+                        result_dict['post_id'] = link.get_text()
+                        logging.debug('Working post: {}'.format(result_dict['permalink']))
+
 
                 result_dict['username'] = post.find(class_='bigusername').get_text()
 
@@ -223,7 +232,7 @@ def parse_threads():
         chunk_posts = pandas.DataFrame(results)
         chunk_posts.to_pickle('../data/output/thread_posts_{}.pkl'.format(chunk_index))
         results = list()
-    return 
+    return
 
 
 # Main section
