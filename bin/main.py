@@ -7,7 +7,6 @@ Code template courtesy https://github.com/bjherger/Python-starter-repo
 """
 import glob
 import logging
-import sys
 from urllib.parse import urljoin
 
 import pandas
@@ -29,7 +28,8 @@ def main():
     scrape_forum_config = False
     parse_forum_config = False
     scrape_threads_config = False
-    parse_threads_config = True
+    parse_threads_config = False
+    agg_results_config = True
 
     # Scrape pages from forum & archive
     if scrape_forum_config:
@@ -44,6 +44,9 @@ def main():
 
     if parse_threads_config:
         parse_threads()
+
+    if agg_results_config:
+        agg_results()
     pass
 
 
@@ -196,43 +199,68 @@ def parse_threads():
                           format(thread_index, thread_scrape_chunk_path, thread_page['page_url']))
 
             page_html = thread_page['page_html']
-            soup = BeautifulSoup(page_html)
+            soup = BeautifulSoup(str(page_html))
 
             # Iterate through posts on thread_page
             for post in soup.find_all(class_='tpost'):
+
                 result_dict = dict()
                 result_dict.update(thread_page)
                 del result_dict['page_html']
 
-                # Pull permalink
-                for link in soup.find_all('a'):
-                    element_name = link.get('id')
-                    if element_name is not None and str(element_name).startswith('postcount'):
-                        result_dict['permalink'] = link.attrs['href']
-                        result_dict['post_id'] = link.get_text()
-                        logging.debug('Working post: {}'.format(result_dict['permalink']))
+                try:
+                    # Pull permalink
+                    for link in soup.find_all('a'):
+                        element_name = link.get('id')
+                        if element_name is not None and str(element_name).startswith('postcount'):
+                            result_dict['permalink'] = link.attrs['href']
+                            result_dict['post_id'] = link.get_text()
+                            logging.debug('Working post: {}'.format(result_dict['permalink']))
 
 
-                result_dict['username'] = post.find(class_='bigusername').get_text()
+                    result_dict['username'] = post.find(class_='bigusername').get_text()
 
-                result_dict['user_info'] = post.find(class_='tcell alt2').get_text()
-                result_dict['text'] = post.find(class_='tcell alt1').get_text()
+                    result_dict['user_info'] = post.find(class_='tcell alt2').get_text()
+                    result_dict['text'] = post.find(class_='tcell alt1').get_text()
 
-                # Search through all of the links for the timestamp link
-                for link in soup.find_all('a'):
-                    element_name = link.get('name')
+                    # Search through all of the links for the timestamp link
+                    for link in soup.find_all('a'):
+                        element_name = link.get('name')
 
-                    # If the link describes a timestamp, add that timestampe
-                    if element_name is not None and str(element_name).startswith('post'):
-                        result_dict['timestamp'] = str(link.next_sibling)
+                        # If the link describes a timestamp, add that timestampe
+                        if element_name is not None and str(element_name).startswith('post'):
+                            result_dict['timestamp'] = str(link.next_sibling)
+                    result_dict['error'] = False
+                except:
+                    logging.warning('Issue!')
+                    result_dict['error'] = True
 
-                # Add thread post to results
-                results.append(result_dict)
+                    # Add thread post to results
+                    results.append(result_dict)
+
 
         chunk_posts = pandas.DataFrame(results)
         chunk_posts.to_pickle('../data/output/thread_posts_{}.pkl'.format(chunk_index))
         results = list()
     return
+
+def agg_results():
+    thread_post_chunk_paths = sorted(glob.glob('../data/output/thread_posts_*.pkl'))
+    logging.info(
+        'List of thread post chunks to parse: {}, {}'.format(len(thread_post_chunk_paths), thread_post_chunk_paths))
+
+    results = list()
+
+    for chunk_index, chunk_path in enumerate(thread_post_chunk_paths):
+
+        chunk_df = pandas.read_pickle(chunk_path)
+
+        results.append(chunk_df)
+
+    observations = pandas.concat(results)
+
+    observations.to_pickle('../data/output/posts.pkl')
+
 
 
 # Main section
