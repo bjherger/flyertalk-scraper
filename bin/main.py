@@ -22,13 +22,13 @@ def main():
     :return: None
     :rtype: None
     """
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.WARNING)
 
     # Reference variables
     scrape_forum_config = False
     parse_forum_config = False
     scrape_threads_config = False
-    parse_threads_config = False
+    parse_threads_config = True
     agg_results_config = True
 
     # Scrape pages from forum & archive
@@ -235,8 +235,8 @@ def parse_threads():
                     logging.warning('Issue!')
                     result_dict['error'] = True
 
-                    # Add thread post to results
-                    results.append(result_dict)
+                # Add thread post to results
+                results.append(result_dict)
 
 
         chunk_posts = pandas.DataFrame(results)
@@ -254,6 +254,7 @@ def agg_results():
     for chunk_index, chunk_path in enumerate(thread_post_chunk_paths):
 
         chunk_df = pandas.read_pickle(chunk_path)
+        print(chunk_df)
 
         results.append(chunk_df)
 
